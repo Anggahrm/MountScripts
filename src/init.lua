@@ -3,8 +3,9 @@ if not game:IsLoaded() then
 end
 
 local repo = "https://raw.githubusercontent.com/Anggahrm/MountScripts/main/"
+local env = getgenv()
 
-function getgitpath(where)
+function env.getgitpath(where)
     if where == "src" then
         return repo .. "src/"
     elseif where == "games" then

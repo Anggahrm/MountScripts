@@ -344,7 +344,9 @@ function ui:Textbox(text, default, callback)
 end
 
 function ui:Init()
-    local success, result = pcall(game:HttpGet, getgitpath("games") .. tostring(game.PlaceId) .. ".lua")
+    local success, result = pcall(function()
+        return game:HttpGet(getgitpath("games") .. tostring(game.PlaceId) .. ".lua")
+    end)
     if success and result and result ~= "404: Not Found" then
         local gameModule = loadstring(result)()
         gameModule(ui)
