@@ -2,7 +2,7 @@ if not game:IsLoaded() then
     game.Loaded:Wait()
 end
 
-local repo = "https://raw.githubusercontent.com/yourusername/MountScripts/main/"
+local repo = "https://raw.githubusercontent.com/Anggahrm/MountScripts/main/"
 
 function getgitpath(where)
     if where == "src" then
