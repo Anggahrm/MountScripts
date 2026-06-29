@@ -42,6 +42,31 @@ return function(ui)
         end
     end
 
+    local function getHumanoid()
+        if plr.Character then
+            return plr.Character:FindFirstChildOfClass("Humanoid")
+        end
+    end
+
+    local function moveToCF(targetCF)
+        local hrp = getHrp()
+        local hum = getHumanoid()
+        if not hrp or not hum then return false end
+
+        local origSpeed = hum.WalkSpeed
+        hum.WalkSpeed = 150
+
+        hum:MoveTo(targetCF.Position)
+        repeat
+            task.wait()
+            hrp = getHrp()
+            if not hrp then break end
+        until (hrp.Position - targetCF.Position).Magnitude < 15
+
+        hum.WalkSpeed = origSpeed
+        return true
+    end
+
     local function findCurrentCP()
         local hrp = getHrp()
         if not hrp then return 0 end
@@ -104,11 +129,8 @@ return function(ui)
             for i = startCP, CP_TOTAL do
                 if not running then break end
 
-                hrp = getHrp()
-                if not hrp then break end
-
-                hrp.CFrame = cps[i]
                 ui:SetStatus("Checkpoint " .. i .. "/" .. CP_TOTAL, true)
+                moveToCF(cps[i])
 
                 if i == CP_TOTAL then
                     ui:SetStatus("Puncak tercapai! 🏔️", true)
@@ -121,12 +143,9 @@ return function(ui)
             end
 
             if autoBC and running then
-                hrp = getHrp()
-                if hrp then
-                    hrp.CFrame = cps[0]
-                    ui:SetStatus("Balik ke basecamp...", false)
-                    task.wait(2)
-                end
+                moveToCF(cps[0])
+                ui:SetStatus("Balik ke basecamp...", false)
+                task.wait(2)
             end
         end
 
@@ -134,10 +153,7 @@ return function(ui)
     end)
 
     ui:Button("Reset ke Basecamp", function()
-        local hrp = getHrp()
-        if hrp then
-            hrp.CFrame = cps[0]
-            ui:SetStatus("Teleport ke basecamp", false)
-        end
+        moveToCF(cps[0])
+        ui:SetStatus("Teleport ke basecamp", false)
     end)
 end
