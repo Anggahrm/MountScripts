@@ -14,7 +14,7 @@ return function(ui)
     cps[3]  = CFrame.new(385, 293.78125, -3020.999755859375, 0.8943938612937927, 0, -0.44728031754493716, 0, 1, 0, 0.44728031754493716, 0, 0.8943938612937927)
     cps[4]  = CFrame.new(-419.449462890625, 292.90625, -3719.3388671875, 0.6874574422836304, 0, -0.7262246608734131, 0, 1, 0, 0.7262246608734131, 0, 0.6874574422836304)
     cps[5]  = CFrame.new(-540.033935546875, 294.8125, -4767.44140625, 0.3242985010147095, 0, 0.9459547996520996, 0, 1, 0, -0.9459547996520996, 0, 0.3242985010147095)
-    cps[6]  = CFrame.new(-401.99951171875, 679.203125, -5176.0009765625, 0.985408365726471, 0, 0.1702069491147995, 0, 1, 0, -0.1702069491147995, 0, 0.985408365726471)
+    cps[6]  = CFrame.new(-401.99951171875, 679.203125, -5176.0009765625, 0.985408365726471, 0, 0.1702069491147995, 0, 1, 0, -0.1702069491147995, 0, 0.9854083651147995)
     cps[7]  = CFrame.new(60, 680.125, -6023.0009765625, 0.9408937096595764, 0, 0.338701993227005, 0, 1, 0, -0.338701993227005, 0, 0.9408937096595764)
     cps[8]  = CFrame.new(841.9995727539063, 425.40625, -6804, 0, 0, -1, 0, 1, 0, 1, 0, 0)
     cps[9]  = CFrame.new(1590.0001220703126, 424.171875, -6537, 0.9999937415122986, 0, 0.0035372376441955568, 0, 1, 0, -0.0035372376441955568, 0, 0.9999937415122986)
@@ -24,7 +24,7 @@ return function(ui)
     cps[13] = CFrame.new(4617.0791015625, 1044.453125, -5996.47802734375, -0.7078604698181152, 0, 0.7063522338867188, 0, 1, 0, -0.7063522338867188, 0, -0.7078604698181152)
     cps[14] = CFrame.new(5280.8759765625, 1416.484375, -5660.8310546875, -0.7359836101531982, 0, 0.6769993901252747, 0, 1, 0, -0.6769993901252747, 0, -0.7359836101531982)
     cps[15] = CFrame.new(5816.79541015625, 1416.265625, -4856.607421875, -0.7944316864013672, 0, 0.6073541045188904, 0, 1, 0, -0.6073541045188904, 0, -0.7944316864013672)
-    cps[16] = CFrame.new(6534.30615234375, 1662.359375, -4379.53857421875, -0.38431692123413088, 0, 0.9232012629508972, 0, 1, 0, -0.9232012629508972, 0, -0.38431692123413088)
+    cps[16] = CFrame.new(6534.30615234375, 1662.359375, -4379.53857421875, -0.38431692123413088, 0, 0.9232012629508972, 0, 1, 0, -0.9232012629508972, 0, 0.38431692123413088)
     cps[17] = CFrame.new(7065, 1661, -4086, -0.5387980937957764, 0, 0.8424350619316101, 0, 1, 0, -0.8424350619316101, 0, -0.5387980937957764)
     cps[18] = CFrame.new(7350.1962890625, 2155.828125, -3840.182861328125, -0.9542553424835205, 0, 0.29899320006370547, 0, 1, 0, -0.29899320006370547, 0, -0.9542553424835205)
     cps[19] = CFrame.new(7794.9775390625, 2155.6875, -3115.046142578125, -0.04537475109100342, 0, 0.998970091342926, 0, 1, 0, -0.998970091342926, 0, -0.04537475109100342)
@@ -33,6 +33,7 @@ return function(ui)
 
     local CP_TOTAL = 21
     local running = false
+    local workerRunning = false
     local delaySec = 5
     local autoBC = false
 
@@ -59,15 +60,15 @@ return function(ui)
     end
 
     ui:Header("Auto Summit")
-
     ui:Label("Delay antar checkpoint (detik)")
-    local delayInput = ui:Textbox("Delay (detik)", "5", function(val)
+    ui:Textbox("Delay (detik)", "5", function(val)
         local num = tonumber(val)
-        if num and num > 0 then delaySec = num end
+        if num and num > 0 then
+            delaySec = num
+        end
     end)
 
-    local autoBCToggle
-    autoBCToggle = ui:Toggle("Auto BC setelah summit", false, function(bool)
+    ui:Toggle("Auto BC setelah summit", false, function(bool)
         autoBC = bool
     end)
 
@@ -76,53 +77,82 @@ return function(ui)
 
     ui:Toggle("Mulai Auto Summit", false, function(bool)
         running = bool
+
         if not running then
             ui:SetStatus("Idle", false)
             return
         end
 
-        -- Hancurin anti-cheat
-        local cc = plr.PlayerScripts:FindFirstChild("CheckpointClient")
-        if cc then cc:Destroy(); ui:SetStatus("Anti-cheat disabled", true) end
-
-        ui:SetStatus("Auto Summit berjalan...", true)
-
-        while running do
-            local hrp = getHrp()
-            if not hrp then task.wait(1) continue end
-
-            local startCP = findCurrentCP()
-            if startCP >= CP_TOTAL then startCP = 0 end
-
-            for i = startCP, CP_TOTAL do
-                if not running then break end
-                hrp = getHrp()
-                if not hrp then break end
-
-                hrp.CFrame = cps[i]
-                ui:SetStatus("Checkpoint " .. i .. "/" .. CP_TOTAL, true)
-
-                if i == CP_TOTAL then
-                    ui:SetStatus("Puncak tercapai! 🏔️", true)
-                end
-
-                for remaining = delaySec, 1, -1 do
-                    if not running then break end
-                    task.wait(1)
-                end
-            end
-
-            if autoBC and running then
-                hrp = getHrp()
-                if hrp then
-                    hrp.CFrame = cps[0]
-                    ui:SetStatus("Balik ke basecamp...", false)
-                    task.wait(2)
-                end
-            end
+        if workerRunning then
+            return
         end
 
-        ui:SetStatus("Idle", false)
+        workerRunning = true
+        task.spawn(function()
+            local ok, err = pcall(function()
+                local cc = plr.PlayerScripts:FindFirstChild("CheckpointClient")
+                if cc then
+                    cc:Destroy()
+                    ui:SetStatus("Anti-cheat disabled", true)
+                end
+
+                ui:SetStatus("Auto Summit berjalan...", true)
+
+                while running do
+                    local hrp = getHrp()
+                    if not hrp then
+                        task.wait(1)
+                        continue
+                    end
+
+                    local startCP = findCurrentCP()
+                    if startCP >= CP_TOTAL then
+                        startCP = 0
+                    end
+
+                    for i = startCP, CP_TOTAL do
+                        if not running then
+                            break
+                        end
+
+                        hrp = getHrp()
+                        if not hrp then
+                            break
+                        end
+
+                        hrp.CFrame = cps[i]
+                        ui:SetStatus("Checkpoint " .. i .. "/" .. CP_TOTAL, true)
+
+                        if i == CP_TOTAL then
+                            ui:SetStatus("Puncak tercapai! 🏔️", true)
+                        end
+
+                        local deadline = os.clock() + delaySec
+                        while running and os.clock() < deadline do
+                            task.wait(0.1)
+                        end
+                    end
+
+                    if autoBC and running then
+                        hrp = getHrp()
+                        if hrp then
+                            hrp.CFrame = cps[0]
+                            ui:SetStatus("Balik ke basecamp...", false)
+                            task.wait(2)
+                        end
+                    end
+                end
+            end)
+
+            workerRunning = false
+
+            if not ok then
+                warn("[MountScripts] Auto Summit error:", err)
+                ui:SetStatus("Error - lihat console", false)
+            elseif not running then
+                ui:SetStatus("Idle", false)
+            end
+        end)
     end)
 
     ui:Button("Reset ke Basecamp", function()
