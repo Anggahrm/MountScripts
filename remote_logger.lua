@@ -68,8 +68,10 @@ layout.Padding = UDim.new(0, 2)
 layout.Parent = scroll
 
 local function refreshList(search)
-    for _, v in ipairs(scroll:GetChildren()) do
-        if v:IsA("Frame") then v:Destroy() end
+    for _, child in ipairs(scroll:GetChildren()) do
+        if child:IsA("TextButton") then
+            child:Destroy()
+        end
     end
 
     for _, remote in ipairs(remotes) do
@@ -77,7 +79,8 @@ local function refreshList(search)
         local full = remote:GetFullName()
 
         if search and search ~= "" then
-            if not name:find(search:lower()) and not full:lower():find(search:lower()) then
+            local query = search:lower()
+            if not name:find(query, 1, true) and not full:lower():find(query, 1, true) then
                 continue
             end
         end
@@ -127,14 +130,14 @@ local function refreshList(search)
         fireBtn.MouseButton1Click:Connect(function()
             if remote:IsA("RemoteEvent") then
                 local success, err = pcall(function()
-                    remote:FireServer(unpack({}))
+                    remote:FireServer()
                 end)
                 print("Fired:", remote:GetFullName(), success and "OK" or err)
             else
                 local success, result = pcall(function()
-                    return remote:InvokeServer(unpack({}))
+                    return remote:InvokeServer()
                 end)
-                print("Invoked:", remote:GetFullName(), success and result or err)
+                print("Invoked:", remote:GetFullName(), success and tostring(result) or result)
             end
         end)
     end
