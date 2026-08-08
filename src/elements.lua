@@ -38,7 +38,7 @@ stroke.Thickness = 1
 stroke.Parent = frame
 
 -- Drag
-local dragging, dragStart, startPos
+local dragging, dragStart, startPos, dragInput
 
 frame.InputBegan:Connect(function(input)
     if input.UserInputType == Enum.UserInputType.MouseButton1 then
@@ -252,7 +252,7 @@ function ui:Toggle(text, default, callback)
             tog.BackgroundColor3 = TOG_OFF
             circle.Position = UDim2.new(0, 3, 0.5, -8)
         end
-        callback(isOn)
+        pcall(callback, isOn)
     end
 
     local button = Instance.new("TextButton")
@@ -267,7 +267,9 @@ function ui:Toggle(text, default, callback)
         updateToggle()
     end)
 
-    task.defer(function() callback(isOn) end)
+    task.defer(function()
+        pcall(callback, isOn)
+    end)
 end
 
 function ui:Button(text, callback)
@@ -288,7 +290,9 @@ function ui:Button(text, callback)
     btn.MouseLeave:Connect(function()
         TweenService:Create(btn, TweenInfo.new(0.15), {BackgroundColor3 = ACCENT}):Play()
     end)
-    btn.MouseButton1Click:Connect(callback)
+    btn.MouseButton1Click:Connect(function()
+        pcall(callback)
+    end)
 end
 
 function ui:Textbox(text, default, callback)
@@ -336,8 +340,7 @@ function ui:Textbox(text, default, callback)
     input.Parent = inputFrame
 
     input.FocusLost:Connect(function()
-        local val = input.Text
-        pcall(callback, val)
+        pcall(callback, input.Text)
     end)
 
     return input
@@ -347,12 +350,26 @@ function ui:Init()
     local success, result = pcall(function()
         return game:HttpGet(getgitpath("games") .. tostring(game.PlaceId) .. ".lua")
     end)
-    if success and result and result ~= "404: Not Found" then
-        local gameModule = loadstring(result)()
-        gameModule(ui)
-    else
+
+    if not success or not result or result == "404: Not Found" then
         ui:Header("Unsupported Game")
         ui:Label("Belum ada script untuk game ini.")
+        return
+    end
+
+    local loadSuccess, gameModule = pcall(loadstring, result)
+    if not loadSuccess or type(gameModule) ~= "function" then
+        ui:Header("Game Module Error")
+        ui:Label("Module game gagal dimuat.")
+        warn("[MountScripts] Failed to compile game module:", gameModule)
+        return
+    end
+
+    local runSuccess, runError = pcall(gameModule, ui)
+    if not runSuccess then
+        ui:Header("Game Module Error")
+        ui:Label("Terjadi error saat menjalankan script game.")
+        warn("[MountScripts] Game module runtime error:", runError)
     end
 end
 
