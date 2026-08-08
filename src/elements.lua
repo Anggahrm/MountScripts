@@ -3,6 +3,7 @@ local coregui = game:GetService("CoreGui")
 local UserInputService = game:GetService("UserInputService")
 local TweenService = game:GetService("TweenService")
 local hui = gethui or get_hidden_gui
+local REPO = "https://raw.githubusercontent.com/Anggahrm/MountScripts/main/"
 
 -- Colors
 local BG = Color3.fromRGB(18, 18, 22)
@@ -348,7 +349,7 @@ end
 
 function ui:Init()
     local success, result = pcall(function()
-        return game:HttpGet(getgitpath("games") .. tostring(game.PlaceId) .. ".lua")
+        return game:HttpGet(REPO .. "src/games/" .. tostring(game.PlaceId) .. ".lua")
     end)
 
     if not success or not result or result == "404: Not Found" then
