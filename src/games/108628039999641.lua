@@ -13,8 +13,34 @@ return function(ui)
 
     local running = false
     local needleRunning = false
-    local delaySec = 0.7
+    local delaySec = 0.4
     local batchSize = 40
+    local grabCount = 5
+    local grabRadius = 3.8
+
+    local GRAB_LEVELS = {
+        { Count = 1, Radius = 0 },
+        { Count = 2, Radius = 1.35 },
+        { Count = 3, Radius = 1.8 },
+        { Count = 4, Radius = 2.35 },
+        { Count = 5, Radius = 2.9 },
+        { Count = 5, Radius = 3.8 },
+    }
+    local SPEED_COOLDOWNS = { 0.55, 0.5, 0.45, 0.4, 0.35, 0.3 }
+
+    -- Baca level upgrade asli dari server biar count/radius selalu pas
+    local function detectUpgrades()
+        local ok, state = pcall(function()
+            return folder:WaitForChild("GetUpgradeState"):InvokeServer()
+        end)
+        if ok and type(state) == "table" and type(state.levels) == "table" then
+            local g = GRAB_LEVELS[state.levels.Grab] or GRAB_LEVELS[6]
+            grabCount, grabRadius = g.Count, g.Radius
+            local cd = SPEED_COOLDOWNS[state.levels.Speed]
+            return "Grab x" .. grabCount .. " (r=" .. grabRadius .. ")" .. (cd and (" | Speed cd=" .. cd .. "s") or "")
+        end
+        return nil
+    end
 
     local function getHrp()
         if plr.Character then
@@ -49,11 +75,11 @@ return function(ui)
     end
 
     -- Nearby hay ids around a position (grab candidates, like the client does)
-    local function grabCandidates(pos, excludeId, count)
+    local function grabCandidates(pos, excludeId, count, radius)
         local out = {}
         local op = OverlapParams.new()
         op.MaxParts = 24
-        for _, v in ipairs(workspace:GetPartBoundsInRadius(pos, 2.5, op)) do
+        for _, v in ipairs(workspace:GetPartBoundsInRadius(pos, radius, op)) do
             if #out >= count then break end
             local ok, id = pcall(function() return v:GetAttribute("HayId") end)
             if ok and type(id) == "number" and id ~= excludeId then
@@ -83,10 +109,10 @@ return function(ui)
 
     ui:Header("Needle Farmhouse")
 
-    ui:Label("Delay antar pick (detik, min 0.6)")
-    ui:Textbox("Delay (detik)", "0.7", function(val)
+    ui:Label("Delay antar pick (detik, min 0.35)")
+    ui:Textbox("Delay (detik)", "0.4", function(val)
         local num = tonumber(val)
-        if num and num >= 0.6 then delaySec = num end
+        if num and num >= 0.35 then delaySec = num end
     end)
 
     ui:Label("Jumlah hay per batch scan")
@@ -102,7 +128,8 @@ return function(ui)
             return
         end
 
-        ui:SetStatus("Auto farm jalan...", true)
+        local info = detectUpgrades()
+        ui:SetStatus("Auto farm jalan..." .. (info and (" (" .. info .. ")") or ""), true)
 
         while running do
             goNearPile()
@@ -114,7 +141,7 @@ return function(ui)
             else
                 for _, h in ipairs(batch) do
                     if not running then break end
-                    local cands = grabCandidates(h.pos, h.id, 3)
+                    local cands = grabCandidates(h.pos, h.id, grabCount - 1, grabRadius)
                     pcall(function()
                         PickHay:FireServer(h.id, cands)
                     end)
