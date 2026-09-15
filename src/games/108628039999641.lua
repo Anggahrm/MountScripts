@@ -21,6 +21,47 @@ return function(ui)
     local prioritize = true
     local delaySec = 0.4
     local batchSize = 40
+    local pickCount = 0
+    local staleCount = 0
+    local activeSet = nil
+
+    -- Daftar hay id yang masih bisa dipanen menurut server.
+    -- Id yang sudah dipanen diam-diam ditolak server (hasil +1/+0).
+    local function refreshActive()
+        local ok, state = pcall(function()
+            return folder:WaitForChild("GetHayState"):InvokeServer()
+        end)
+        if ok and type(state) == "table" then
+            local list = state.activeIds or state.activeSlots
+            if type(list) == "table" then
+                local set = {}
+                for _, id in ipairs(list) do
+                    if type(id) == "number" then set[id] = true end
+                end
+                activeSet = set
+                return true
+            end
+        end
+        return false
+    end
+
+    local function isActive(id)
+        if activeSet == nil then return true end
+        return activeSet[id] == true
+    end
+
+    local function nearCount(pos, radius)
+        local n = 0
+        local op = OverlapParams.new()
+        op.MaxParts = 30
+        for _, v in ipairs(workspace:GetPartBoundsInRadius(pos, radius, op)) do
+            local ok, id = pcall(function() return v:GetAttribute("HayId") end)
+            if ok and type(id) == "number" and isActive(id) then
+                n = n + 1
+            end
+        end
+        return n
+    end
 
     -- Mutasi hay (dari Config game): hitung client-side, deterministik
     local MUTATIONS = {
@@ -113,7 +154,7 @@ return function(ui)
         for _, d in ipairs(workspace:GetDescendants()) do
             if d:IsA("BasePart") then
                 local ok, id = pcall(function() return d:GetAttribute("HayId") end)
-                if ok and type(id) == "number" then
+                if ok and type(id) == "number" and isActive(id) then
                     local mult, mut = 1, "Normal"
                     if prioritize then mult, mut = mutationValue(id) end
                     table.insert(out, { id = id, pos = d.Position, mult = mult, mut = mut })
@@ -140,7 +181,7 @@ return function(ui)
         for _, v in ipairs(workspace:GetPartBoundsInRadius(pos, radius, op)) do
             if #out >= count then break end
             local ok, id = pcall(function() return v:GetAttribute("HayId") end)
-            if ok and type(id) == "number" and id ~= excludeId then
+            if ok and type(id) == "number" and id ~= excludeId and isActive(id) then
                 table.insert(out, id)
             end
         end
@@ -192,6 +233,10 @@ return function(ui)
         if num and num > 0 and num <= 200 then batchSize = math.floor(num) end
     end)
 
+    ui:Toggle("Prioritaskan hay mahal", true, function(bool)
+        prioritize = bool
+    end)
+
     ui:Toggle("Auto Farm Hay", false, function(bool)
         farming = bool
         if not farming then
@@ -202,6 +247,8 @@ return function(ui)
         local gc = numAttr("HayGrabCount", 5)
         local gr = numAttr("HayGrabRadius", 3.8)
         local cd = numAttr("HayPickCooldown", 0.3)
+        refreshActive()
+        pickCount, staleCount = 0, 0
         ui:SetStatus("Farm x" .. gc .. " (cd " .. cd .. "s)...", true)
 
         while farming do
@@ -242,7 +289,9 @@ return function(ui)
                 else
                     for _, h in ipairs(near) do
                         if not farming then break end
-                        -- Tiap pick dibungkus pcall biar 1 error tidak membunuh loop
+                        -- Tiap pick dibungkus pcall biar 1 error tidak membunuh loop.
+                        -- Yield dilacak: kalau 3x beruntun zonk, refresh active set.
+                        local heldBefore = numAttr("HayHeld", 0)
                         local ok, err = pcall(function()
                             -- Tangan penuh? jual dulu kalau auto sell nyala
                             if selling and numAttr("HayHeld", 0) >= numAttr("HayCapacity", 25) - gc then
@@ -251,10 +300,24 @@ return function(ui)
                             end
                             local cands = grabCandidates(h.pos, h.id, gc - 1, gr)
                             PickHay:FireServer(h.id, cands)
-                            ui:SetStatus("Farm x" .. gc .. " #" .. h.id .. " (" .. h.mut .. " x" .. h.mult .. ") | " .. stats(), true)
                         end)
                         if not ok then
                             ui:SetStatus("Err: " .. tostring(err):sub(1, 60), true)
+                        else
+                            local gained = numAttr("HayHeld", 0) - heldBefore
+                            pickCount = pickCount + 1
+                            if gained > 0 then
+                                staleCount = 0
+                            else
+                                staleCount = staleCount + 1
+                            end
+                            if staleCount >= 3 then
+                                staleCount = 0
+                                refreshActive()
+                                ui:SetStatus("Refresh state... | " .. stats(), true)
+                                break
+                            end
+                            ui:SetStatus("Farm #" .. pickCount .. " x" .. gc .. " #" .. h.id .. " (" .. h.mut .. " x" .. h.mult .. " +" .. gained .. ") | " .. stats(), true)
                         end
                         task.wait(delaySec)
                     end
