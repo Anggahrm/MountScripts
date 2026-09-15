@@ -1,4 +1,4 @@
--- Search For The Needle : Farmhouse (auto farm + auto claim)
+-- Search For The Needle : Farmhouse (auto farm + auto sell + auto claim)
 
 return function(ui)
     local Players = game:GetService("Players")
@@ -7,45 +7,34 @@ return function(ui)
 
     local FOLDER_NAME = "NeedleHaystack"
     local PILE = Vector3.new(-199.18, 2.1, 30.24)
+    local SELL_POS = Vector3.new(-164, 6, 56)
+    local FARMER_POS = Vector3.new(-162, 5, 18)
 
     local folder = ReplicatedStorage:WaitForChild(FOLDER_NAME)
     local PickHay = folder:WaitForChild("PickHay")
+    local SellHay = folder:WaitForChild("SellHay")
+    local NeedleHandIn = folder:WaitForChild("NeedleHandIn")
 
-    local running = false
-    local needleRunning = false
+    local farming = false
+    local selling = false
+    local claiming = false
     local delaySec = 0.4
     local batchSize = 40
-    local grabCount = 5
-    local grabRadius = 3.8
-
-    local GRAB_LEVELS = {
-        { Count = 1, Radius = 0 },
-        { Count = 2, Radius = 1.35 },
-        { Count = 3, Radius = 1.8 },
-        { Count = 4, Radius = 2.35 },
-        { Count = 5, Radius = 2.9 },
-        { Count = 5, Radius = 3.8 },
-    }
-    local SPEED_COOLDOWNS = { 0.55, 0.5, 0.45, 0.4, 0.35, 0.3 }
-
-    -- Baca level upgrade asli dari server biar count/radius selalu pas
-    local function detectUpgrades()
-        local ok, state = pcall(function()
-            return folder:WaitForChild("GetUpgradeState"):InvokeServer()
-        end)
-        if ok and type(state) == "table" and type(state.levels) == "table" then
-            local g = GRAB_LEVELS[state.levels.Grab] or GRAB_LEVELS[6]
-            grabCount, grabRadius = g.Count, g.Radius
-            local cd = SPEED_COOLDOWNS[state.levels.Speed]
-            return "Grab x" .. grabCount .. " (r=" .. grabRadius .. ")" .. (cd and (" | Speed cd=" .. cd .. "s") or "")
-        end
-        return nil
-    end
 
     local function getHrp()
         if plr.Character then
             return plr.Character:FindFirstChild("HumanoidRootPart")
         end
+    end
+
+    local function numAttr(name, fallback)
+        local v = tonumber(plr:GetAttribute(name))
+        return v or fallback
+    end
+
+    local function stats()
+        return "Cash: " .. getCash() .. " | Tangan: " .. numAttr("HayHeld", 0)
+            .. "/" .. numAttr("HayCapacity", 25) .. " | Sisa: " .. tostring(folder:GetAttribute("RemainingHay"))
     end
 
     local function getCash()
@@ -54,12 +43,6 @@ return function(ui)
         return c and tostring(c.Value) or "?"
     end
 
-    local function getRemaining()
-        local r = folder:GetAttribute("RemainingHay")
-        return r and tostring(r) or "?"
-    end
-
-    -- Scan rendered hay parts, return array of {id, pos}
     local function scanHay(maxCount)
         local out = {}
         for _, d in ipairs(workspace:GetDescendants()) do
@@ -74,7 +57,6 @@ return function(ui)
         return out
     end
 
-    -- Nearby hay ids around a position (grab candidates, like the client does)
     local function grabCandidates(pos, excludeId, count, radius)
         local out = {}
         local op = OverlapParams.new()
@@ -99,6 +81,8 @@ return function(ui)
         return nil
     end
 
+    -- Server cek jarak (~20 stud), jadi avatar WAJIB dekat pile.
+    -- Cukup teleport sekali ke atas pile, tidak perlu per-hay.
     local function goNearPile()
         local hrp = getHrp()
         if hrp and (hrp.Position - PILE).Magnitude > 25 then
@@ -107,9 +91,20 @@ return function(ui)
         end
     end
 
+    local function doSell()
+        local hrp = getHrp()
+        if not hrp then return end
+        local back = hrp.CFrame
+        hrp.CFrame = CFrame.new(SELL_POS)
+        task.wait(0.6)
+        pcall(function() SellHay:FireServer() end)
+        task.wait(0.8)
+        hrp.CFrame = back
+    end
+
     ui:Header("Needle Farmhouse")
 
-    ui:Label("Delay antar pick (detik, min 0.35)")
+    ui:Label("Delay antar pick (min 0.35)")
     ui:Textbox("Delay (detik)", "0.4", function(val)
         local num = tonumber(val)
         if num and num >= 0.35 then delaySec = num end
@@ -122,16 +117,18 @@ return function(ui)
     end)
 
     ui:Toggle("Auto Farm Hay", false, function(bool)
-        running = bool
-        if not running then
+        farming = bool
+        if not farming then
             ui:SetStatus("Idle", false)
             return
         end
 
-        local info = detectUpgrades()
-        ui:SetStatus("Auto farm jalan..." .. (info and (" (" .. info .. ")") or ""), true)
+        local gc = numAttr("HayGrabCount", 5)
+        local gr = numAttr("HayGrabRadius", 3.8)
+        local cd = numAttr("HayPickCooldown", 0.3)
+        ui:SetStatus("Farm x" .. gc .. " (cd " .. cd .. "s)...", true)
 
-        while running do
+        while farming do
             goNearPile()
             local batch = scanHay(batchSize)
 
@@ -140,12 +137,17 @@ return function(ui)
                 task.wait(2)
             else
                 for _, h in ipairs(batch) do
-                    if not running then break end
-                    local cands = grabCandidates(h.pos, h.id, grabCount - 1, grabRadius)
+                    if not farming then break end
+                    -- Tangan penuh? jual dulu kalau auto sell nyala
+                    if selling and numAttr("HayHeld", 0) >= numAttr("HayCapacity", 25) - gc then
+                        doSell()
+                        goNearPile()
+                    end
+                    local cands = grabCandidates(h.pos, h.id, gc - 1, gr)
                     pcall(function()
                         PickHay:FireServer(h.id, cands)
                     end)
-                    ui:SetStatus("Farm | Cash: " .. getCash() .. " | Sisa: " .. getRemaining(), true)
+                    ui:SetStatus("Farm x" .. gc .. " | " .. stats(), true)
                     task.wait(delaySec)
                 end
             end
@@ -154,16 +156,22 @@ return function(ui)
         ui:SetStatus("Idle", false)
     end)
 
+    ui:Toggle("Auto Sell (saat tangan penuh)", false, function(bool)
+        selling = bool
+        ui:SetStatus(bool and "Auto sell ON" or "Idle", bool)
+    end)
+
     ui:Toggle("Auto Claim Needle", false, function(bool)
-        needleRunning = bool
-        if not needleRunning then
+        claiming = bool
+        if not claiming then
             ui:SetStatus("Idle", false)
             return
         end
 
-        ui:SetStatus("Menunggu needle muncul...", true)
+        ui:SetStatus("Menunggu needle spawn...", true)
 
-        while needleRunning do
+        while claiming do
+            local revealed = folder:GetAttribute("NeedleRevealed")
             local part = findNeedlePart()
 
             if part then
@@ -175,20 +183,34 @@ return function(ui)
                 pcall(function()
                     PickHay:FireServer("Objective")
                 end)
-                ui:SetStatus("Needle ditemukan, claim dikirim!", true)
-                task.wait(3)
+                task.wait(1.5)
 
-                if folder:GetAttribute("NeedleClaimed") then
-                    ui:SetStatus("Needle claimed! 🏆", true)
-                    needleRunning = false
-                    break
+                -- Serahkan ke farmer (NeedleHandIn), lalu cek hasil
+                local hrp2 = getHrp()
+                if hrp2 then
+                    hrp2.CFrame = CFrame.new(FARMER_POS)
+                    task.wait(0.5)
                 end
+                pcall(function()
+                    NeedleHandIn:FireServer()
+                end)
+                task.wait(1.5)
+
+                if folder:GetAttribute("NeedleClaimed") or plr:GetAttribute("NeedleOwned") then
+                    ui:SetStatus("Needle claimed! 🏆", true)
+                    claiming = false
+                    break
+                else
+                    ui:SetStatus("Claim dikirim, cek hasil...", true)
+                end
+            else
+                ui:SetStatus("Needle belum spawn (revealed=" .. tostring(revealed) .. ") | " .. stats(), true)
             end
 
-            task.wait(2)
+            task.wait(3)
         end
 
-        if not needleRunning then
+        if not claiming then
             ui:SetStatus("Idle", false)
         end
     end)
@@ -197,11 +219,12 @@ return function(ui)
         local hrp = getHrp()
         if hrp then
             hrp.CFrame = CFrame.new(PILE + Vector3.new(0, 8, 0))
-            ui:SetStatus("Di pile | Cash: " .. getCash(), false)
+            ui:SetStatus("Di pile | " .. stats(), false)
         end
     end)
 
-    ui:Button("Cek Status", function()
-        ui:SetStatus("Cash: " .. getCash() .. " | Sisa hay: " .. getRemaining(), false)
+    ui:Button("Sell Sekarang", function()
+        doSell()
+        ui:SetStatus("Sell | " .. stats(), false)
     end)
 end
