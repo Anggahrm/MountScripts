@@ -27,6 +27,8 @@ return function(ui)
 
     -- Daftar hay id yang masih bisa dipanen menurut server.
     -- Id yang sudah dipanen diam-diam ditolak server (hasil +1/+0).
+    -- WAJIB di-refresh berkala karena tiap panen mengubah daftarnya.
+    local nActive = 0
     local function refreshActive()
         local ok, state = pcall(function()
             return folder:WaitForChild("GetHayState"):InvokeServer()
@@ -34,11 +36,11 @@ return function(ui)
         if ok and type(state) == "table" then
             local list = state.activeIds or state.activeSlots
             if type(list) == "table" then
-                local set = {}
+                local set, n = {}, 0
                 for _, id in ipairs(list) do
-                    if type(id) == "number" then set[id] = true end
+                    if type(id) == "number" then set[id] = true n = n + 1 end
                 end
-                activeSet = set
+                activeSet, nActive = set, n
                 return true
             end
         end
@@ -253,6 +255,7 @@ return function(ui)
 
         while farming do
             goNearPile()
+            refreshActive()
             local okS, batch = pcall(scanHay, batchSize)
             if not okS then
                 ui:SetStatus("Scan err: " .. tostring(batch):sub(1, 60), true)
@@ -306,15 +309,16 @@ return function(ui)
                         else
                             local gained = numAttr("HayHeld", 0) - heldBefore
                             pickCount = pickCount + 1
-                            if gained > 0 then
+                            if gained >= gc then
                                 staleCount = 0
                             else
+                                -- Hasil parsial (+1..+4) = kandidat basi -> refresh
                                 staleCount = staleCount + 1
                             end
-                            if staleCount >= 3 then
+                            if staleCount >= 2 then
                                 staleCount = 0
                                 refreshActive()
-                                ui:SetStatus("Refresh state... | " .. stats(), true)
+                                ui:SetStatus("Refresh state (" .. nActive .. ")... | " .. stats(), true)
                                 break
                             end
                             ui:SetStatus("Farm #" .. pickCount .. " x" .. gc .. " #" .. h.id .. " (" .. h.mut .. " x" .. h.mult .. " +" .. gained .. ") | " .. stats(), true)
