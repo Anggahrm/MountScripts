@@ -105,9 +105,11 @@ return function(ui)
         return c and tostring(c.Value) or "?"
     end
 
-    -- Scan rendered hay; kalau prioritize nyala, urutkan dari pengali tertinggi
+    -- Scan rendered hay; kalau prioritize nyala, urutkan dari pengali tertinggi.
+    -- Ambil sampel secukupnya (bukan full-scan) biar tiap batch cepat.
     local function scanHay(maxCount)
         local out = {}
+        local cap = math.max(maxCount, 40) * 8
         for _, d in ipairs(workspace:GetDescendants()) do
             if d:IsA("BasePart") then
                 local ok, id = pcall(function() return d:GetAttribute("HayId") end)
@@ -115,7 +117,7 @@ return function(ui)
                     local mult, mut = 1, "Normal"
                     if prioritize then mult, mut = mutationValue(id) end
                     table.insert(out, { id = id, pos = d.Position, mult = mult, mut = mut })
-                    if not prioritize and #out >= maxCount then break end
+                    if #out >= cap then break end
                 end
             end
         end
@@ -124,6 +126,8 @@ return function(ui)
                 if a.mult == b.mult then return a.id < b.id end
                 return a.mult > b.mult
             end)
+            while #out > maxCount do table.remove(out) end
+        else
             while #out > maxCount do table.remove(out) end
         end
         return out
@@ -202,9 +206,11 @@ return function(ui)
 
         while farming do
             goNearPile()
-            local batch = scanHay(batchSize)
-
-            if #batch == 0 then
+            local okS, batch = pcall(scanHay, batchSize)
+            if not okS then
+                ui:SetStatus("Scan err: " .. tostring(batch):sub(1, 60), true)
+                task.wait(1)
+            elseif #batch == 0 then
                 ui:SetStatus("Tidak ada hay ter-render, tunggu...", true)
                 task.wait(2)
             else
@@ -236,16 +242,20 @@ return function(ui)
                 else
                     for _, h in ipairs(near) do
                         if not farming then break end
-                        -- Tangan penuh? jual dulu kalau auto sell nyala
-                        if selling and numAttr("HayHeld", 0) >= numAttr("HayCapacity", 25) - gc then
-                            doSell()
-                            goNearPile()
-                        end
-                        local cands = grabCandidates(h.pos, h.id, gc - 1, gr)
-                        pcall(function()
+                        -- Tiap pick dibungkus pcall biar 1 error tidak membunuh loop
+                        local ok, err = pcall(function()
+                            -- Tangan penuh? jual dulu kalau auto sell nyala
+                            if selling and numAttr("HayHeld", 0) >= numAttr("HayCapacity", 25) - gc then
+                                doSell()
+                                goNearPile()
+                            end
+                            local cands = grabCandidates(h.pos, h.id, gc - 1, gr)
                             PickHay:FireServer(h.id, cands)
+                            ui:SetStatus("Farm x" .. gc .. " #" .. h.id .. " (" .. h.mut .. " x" .. h.mult .. ") | " .. stats(), true)
                         end)
-                        ui:SetStatus("Farm x" .. gc .. " | " .. stats(), true)
+                        if not ok then
+                            ui:SetStatus("Err: " .. tostring(err):sub(1, 60), true)
+                        end
                         task.wait(delaySec)
                     end
                 end
