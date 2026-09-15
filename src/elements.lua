@@ -366,11 +366,24 @@ function ui:Init()
         return
     end
 
-    local runSuccess, runError = pcall(gameModule, ui)
+    local runSuccess, inner = pcall(gameModule)
     if not runSuccess then
         ui:Header("Game Module Error")
         ui:Label("Terjadi error saat menjalankan script game.")
-        warn("[MountScripts] Game module runtime error:", runError)
+        warn("[MountScripts] Game module runtime error:", inner)
+        return
+    end
+    if type(inner) ~= "function" then
+        ui:Header("Game Module Error")
+        ui:Label("Module game tidak mengembalikan fungsi.")
+        return
+    end
+
+    local callSuccess, callError = pcall(inner, ui)
+    if not callSuccess then
+        ui:Header("Game Module Error")
+        ui:Label("Terjadi error saat menjalankan script game.")
+        warn("[MountScripts] Game module runtime error:", callError)
     end
 end
 
